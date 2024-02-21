@@ -1,8 +1,7 @@
 const express = require("express");
 const app = express();
-const mysql = require("mysql")
 const router = express.Router();
-require ('dotenv').config();
+const connection = require("../index.js");
 
 
 app.use(express.json());
@@ -11,7 +10,7 @@ app.use(express.json());
 router.get('/primerasolicitud',(req,res)=>{
     res.send('primer endpoint funcional');
     
-})
+});
 
 
 router.post('/createproduct', (req, res) => {
@@ -34,6 +33,8 @@ router.post('/createproduct', (req, res) => {
         res.status(201).json({ message: 'Producto almacenado correctamente' });
     });
 });
+
+
 router.post('/asociarProductoTienda', (req, res) => {
     const { id_producto, id_tienda, valor, compra_maxima } = req.body;
 
@@ -67,6 +68,55 @@ router.post('/asociarProductoTienda', (req, res) => {
             console.log('Producto asociado a la tienda correctamente');
             res.status(201).json({ message: 'Producto asociado a la tienda correctamente' });
         });
+    });
+});
+
+
+router.get('/productos/:id_tienda', (req, res) => {
+    const id_tienda = req.params.id_tienda;
+
+    const sql = `
+    SELECT
+        tp.id_producto,
+        p.nombre,
+        p.barcode,
+        tp.valor,
+        IFNULL(promocion.porcentaje, 0) AS porcentaje_descuento,
+        CASE
+            WHEN promocion.id IS NOT NULL 
+                AND tp.id_tienda_promocion IS NOT NULL 
+                AND tp.id_tienda_promocion = :id_tienda 
+                AND promocion.estado = 1 
+                AND CURDATE() BETWEEN tp_promocion.inicio AND tp_promocion.fin 
+            THEN
+                tp.valor - (tp.valor * promocion.porcentaje / 100)
+            ELSE
+                tp.valor
+            END AS valor_final
+            FROM
+                tiendas_productos tp
+            INNER JOIN
+                productos p ON tp.id_producto = p.id
+            LEFT JOIN
+                tiendas_promociones tp_promocion 
+            ON tp.id_tienda_promocion = tp_promocion.id 
+            AND tp_promocion.estado = 1 
+            AND CURDATE() BETWEEN tp_promocion.inicio AND tp_promocion.fin
+            LEFT JOIN
+                promociones promocion 
+            ON tp.id_promocion = promocion.id 
+            AND promocion.estado = 1
+            WHERE
+                tp.id_tienda = :id_tienda;
+`;
+    connection.query(sql, { id_tienda }, (err, results) => {
+        if (err) {
+            console.error(err);
+            res.status(500).send('Error en la consulta');
+            return;
+        }
+
+        res.json(results);
     });
 });
 
